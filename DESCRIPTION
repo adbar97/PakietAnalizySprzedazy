@@ -1,0 +1,17 @@
+Package: PakietAnalizySprzedazy
+Title: Analiza danych szeregów czasowych dotyczących sprzedaży
+Version: 1.0.0
+Authors@R: 
+    person(given = "Adam",
+           family = "Bartosiak",
+           role = c("aut", "cre"),
+           email = "a.bartosiak7@student.uw.edu.pl")
+Description: Pakiet stworzony dla wewnętrznego zespołu analitycznego w firmie detalicznej. 
+    Umożliwia wczytywanie, walidację, czyszczenie oraz obliczanie kluczowych metryk 
+    biznesowych z surowych danych sprzedażowych. Dodatkowo zawiera funkcje do 
+    wizualizacji trendów oraz prognozowania przyszłej sprzedaży z użyciem 
+    modeli ARIMA i Prophet.
+License: MIT + file LICENSE
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+Config/roxygen2/version: 8.0.0

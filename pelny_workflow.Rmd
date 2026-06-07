@@ -1,0 +1,172 @@
+---
+title: "Analiza danych szeregów czasowych dotyczących sprzedaży"
+author: "Adam Bartosiak"
+date: "`r Sys.Date()`"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    theme: flatly
+    highlight: tango
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+
+# Wyłączenie notacji naukowej na wykresach
+options(scipen = 999)
+
+# Załadowanie wymaganych pakietów
+library(PakietAnalizySprzedazy)
+library(ggplot2)
+library(dplyr)
+library(knitr)
+```
+
+**1. Wprowadzenie i Wczytanie Danych**
+
+Raport ten przedstawia analizę danych sprzedażowych firmy detalicznej, wykorzystując autorski pakiet R do analizy. Dane obejmują historię sprzedaży, informacje o sklepach oraz dni świąteczne.
+
+W pierwszej kolejności wczytujemy surowe dane i przeprowadzamy ich walidację (m.in. sprawdzanie braków, duplikatów i niespójności w datach kalendarzowych). Następnie czyścimy dane, agregując je do poziomu miesięcznego, aby wyeliminować szum informacyjny wynikający z dziennej zmienności i cykli tygodniowych.
+
+```{r}
+df_raw <- load_sales_data("train.csv", "stores.csv", "holidays_events.csv") # Wczytanie danych
+invisible(validate_sales_ts(df_raw))
+df_raw <- df_raw %>% filter(as.Date(date) < as.Date("2017-08-01")) # usunięcie niepełnego miesiąca
+df_clean <- clean_sales_ts(df_raw, agg_level = "month") # agregacja miesięczna
+```
+
+**2. Podsumowanie Biznesowe** 
+
+Poniżej znajduje się skrócone zestawienie wyników dla kadry menedżerskiej, wskazujące najlepiej i najgorzej radzące sobie sklepy oraz wiodącą kategorię produktową.
+
+```{r}
+summary <- create_management_summary(df_clean)
+
+# Wyświetlenie wyników
+
+kable(data.frame( 
+  "Metryka" = c("Najlepszy Sklep (ID)", "Najgorszy Sklep (ID)", "Najlepsza Kategoria"), 
+  "Wartość" = c(summary$Best_Store, summary$Worst_Store, summary$Top_Category) 
+)) 
+```
+
+**Wniosek:** Zasoby marketingowe i zaopatrzeniowe powinny być w pierwszej kolejności kierowane do wiodącej kategorii oraz najlepszych sklepów z jednoczesnym przeprowadzeniem audytów w najsłabszych lokalizacjach.
+
+**3. Analiza trendów sprzedażowych i metryki**
+
+Obliczamy zaawansowane metryki biznesowe (w tym średnią odległość między szczytami sprzedaży) i wizualizujemy długoterminowe trendy.
+
+```{r}
+# Obliczanie metryk
+metrics <- compute_sales_metrics(df_clean)
+
+# Prezentacja przykładowych metryk z ostatnich miesięcy
+tail(metrics %>% select(date, total_sales, avg_sales, avg_peak_distance_days), 5) %>% kable()
+
+# Wizualizacja trendu
+plot_sales_trends(metrics)
+```
+
+**Wniosek:** Widoczna na wykresie wygładzona krzywa miesięczna uwydatnia stabilny rozwój sieci oraz cykliczne wzrosty sprzedaży, szczególnie zauważalne w grudniu (okres świąteczny).
+
+**4. Analiza skuteczności promocji**
+
+Weryfikujemy hipotezę, czy zwiększony udział promocji w danym miesiącu realnie przekłada się na wyższy wolumen sprzedaży.
+
+```{r}
+ggplot(metrics, aes(x = promo_share, y = total_sales)) +
+  geom_point(alpha = 0.6, color = "black", size = 3) +
+  geom_smooth(method = "lm", color = "red", se = TRUE) +
+  labs(
+    title = "Korelacja między udziałem promocji a sprzedażą",
+    x = "Udział asortymentu w promocji (%)",
+    y = "Całkowita Sprzedaż Miesięczna"
+  ) +
+  theme_minimal()
+```
+
+**Wniosek:** Czerwona linia trendu wyraźnie wskazuje na dodatnią korelację. Oznacza to, że miesięczne kampanie promocyjne są skuteczne i stanowią główny silnik napędowy dla wyników finansowych sieci.
+
+**5. Bezpośrednie porównanie kategorii produktowych**
+
+Porównujemy dynamikę sprzedaży dwóch historycznie najsilniejszych rodzin produktowych na przestrzeni analizowanych okresów.
+
+```{r}
+# Wyodrębnienie dwóch najlepszych kategorii
+top_2_cats <- df_clean %>% 
+  group_by(family) %>% 
+  summarise(sum_sales = sum(sales, na.rm = TRUE)) %>% 
+  arrange(desc(sum_sales)) %>% 
+  head(2) %>% 
+  pull(family)
+
+# Filtrowanie i agregacja dla wykresu
+df_top_cats <- df_clean %>% 
+  filter(family %in% top_2_cats) %>% 
+  group_by(date, family) %>% 
+  summarise(sales = sum(sales, na.rm = TRUE), .groups = "drop")
+
+ggplot(df_top_cats, aes(x = date, y = sales, color = family)) +
+  geom_line(size = 1) +
+  scale_x_date(date_breaks = "6 months", date_labels = "%Y-%m") +
+  labs(
+    title = "Najlepsze kategorie produktowe",
+    x = "Miesiące",
+    y = "Sprzedaż Miesięczna",
+    color = "Kategoria"
+  ) +
+  theme_minimal() +
+  scale_color_brewer(palette = "Set1") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+**Wniosek:** Zestawienie pozwala ocenić, która z wiodących kategorii wykazuje stabilny wzrost w ujęciu wielomiesięcznym, a która charakteryzuje się wyższą podatnością na roczne wahania sezonowe.
+
+**6. Analiza wybranej lokalizacji**
+
+Wykorzystujemy funkcję wyższego rzędu sales_ts_logic(), aby wyizolować dane dla danej lokalizacji (poniżej przykład miasta Quito) i ocenić lokalne wzorce sprzedaży na tle całego kraju.
+
+```{r}
+# Analiza dla wybranego miasta
+quito_analysis <- sales_ts_logic(df_clean, p_city = "Quito")
+
+# Wyświetlenie dedykowanego wykresu
+quito_analysis$plot + labs(
+  title = "Długoterminowe trendy sprzedażowe na przykładzie Quito",
+  y = "Sprzedaż Miesięczna"
+)
+```
+
+**Wniosek:** Analiza regionalna dla kluczowego ośrodka miejskiego pozwala zweryfikować, czy lokalny rynek w stolicy rozwija się w tempie spójnym z resztą kraju. Wyłapanie lokalnych anomalii (np. spadków niewidocznych na wykresie ogólnokrajowym) jest kluczowe dla dostosowania lokalnej strategii cenowej.
+
+**7. Prognozowanie przyszłej sprzedaży**
+
+Wykorzystujemy dwa niezależne algorytmy do wyznaczenia predykcji na kolejne 12 miesięcy.
+
+```{r}
+library(forecast)
+
+# Generowanie prognoz na 12 miesięcy
+forecasts <- create_prognosis(df_clean, periods = 12)
+
+# Wykres ARIMA
+autoplot(forecasts$ARIMA) +
+  labs(title = "Prognoza Sprzedaży ARIMA", 
+       y = "Sprzedaż Miesięczna", x = "Lata") +
+  theme_minimal()
+
+# Wykres Prophet 
+ggplot(forecasts$Prophet, aes(x = as.Date(ds), y = yhat)) +
+  geom_line(color = "blue", size = 1) +
+  geom_ribbon(aes(ymin = yhat_lower, ymax = yhat_upper), alpha = 0.2, fill = "blue") +
+  scale_x_date(date_breaks = "1 year", date_labels = "%Y") +
+  labs(title = "Prognoza Sprzedaży Prophet",
+       x = "Data", y = "Przewidywana Sprzedaż Miesięczna") +
+  theme_minimal()
+```
+
+**Wniosek:** Zastosowanie modelu klasycznego (ARIMA) oraz nowoczesnego algorytmu od Prophet pozwala na dywersyfikację ryzyka błędnej predykcji. Oba modele skutecznie uchwyciły roczną sezonowość i przewidują kontynuację długoterminowego trendu wzrostowego na najbliższe 12 miesięcy.
