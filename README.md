@@ -19,6 +19,8 @@ Poniżej znajduje się pełny przepływ pracy, pokazujący możliwości analityc
 
 ### 1. Wczytanie i walidacja danych
 
+UWAGA: Dane należy pobrać ze strony: https://www.kaggle.com/competitions/store-sales-time-series-forecasting. Zbiory danych	to: train, stores, holidays_events
+
 Funkcja load_sales_data() wczytuje dane korzystając z ekosystemu tidyverse. Następnie funkcja validate_sales_ts() weryfikuje jakość danych, sprawdzając m.in. braki, duplikaty, ujemną sprzedaż oraz niespójną częstotliwość dat.  
 
 ```r
